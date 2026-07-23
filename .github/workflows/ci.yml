@@ -1,0 +1,114 @@
+name: IssueRadar AI CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-and-test:
+    name: Code Quality & Automated Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: issueradar
+          POSTGRES_PASSWORD: issueradar_secret_password
+          POSTGRES_DB: issueradar_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'apps/web/package-lock.json'
+
+      - name: Install Monorepo & Web Dependencies
+        run: |
+          npm ci
+          npm --prefix apps/web ci
+
+      - name: Install API Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/api/requirements.txt pytest pytest-asyncio ruff
+
+      - name: Monorepo Formatting Check
+        run: npm run format:check
+
+      - name: Monorepo Linting (ESLint + Ruff)
+        run: npm run lint
+
+      - name: Backend Test Suite (Pytest)
+        env:
+          DATABASE_URL: postgresql+asyncpg://issueradar:issueradar_secret_password@localhost:5432/issueradar_db
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: test_secret_key_at_least_32_characters_long_ci
+          ENCRYPTION_KEY: xK9dJ_L2mN4pQ6rS8tV0wX2yZ4a6b8c0d2e4f6g8h0i=
+        run: |
+          cd apps/api
+          python -m pytest
+
+      - name: Frontend Typecheck
+        run: npm --prefix apps/web run typecheck
+
+      - name: Frontend Production Build
+        run: npm --prefix apps/web run build
+
+  docker-build:
+    name: Production Docker Image Build
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build FastAPI API Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/api
+          file: ./apps/api/Dockerfile
+          push: false
+          tags: issueradar-api:latest
+
+      - name: Build React Web Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/web
+          file: ./apps/web/Dockerfile
+          push: false
+          tags: issueradar-web:latest

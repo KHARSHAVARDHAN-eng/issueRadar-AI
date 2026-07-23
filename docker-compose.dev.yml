@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: issueradar-postgres-dev
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-issueradar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-issueradar_secret_password}
+      POSTGRES_DB: ${POSTGRES_DB:-issueradar_db}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U issueradar -d issueradar_db']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: issueradar-redis-dev
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: issueradar-api-dev
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-issueradar}:${POSTGRES_PASSWORD:-issueradar_secret_password}@postgres:5432/${POSTGRES_DB:-issueradar_db}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - GITHUB_REDIRECT_URI=${GITHUB_REDIRECT_URI}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev_secret_jwt_key_issueradar_ai_at_least_32_chars_long}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-xK9dJ_L2mN4pQ6rS8tV0wX2yZ4a6b8c0d2e4f6g8h0i=}
+      - AI_PROVIDER=${AI_PROVIDER:-mock}
+    ports:
+      - '8000:8000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+    container_name: issueradar-web-dev
+    ports:
+      - '3000:3000'
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    depends_on:
+      - api
+
+volumes:
+  postgres_dev_data:

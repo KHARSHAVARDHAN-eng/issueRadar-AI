@@ -1,0 +1,29 @@
+{
+  "name": "issueradar-ai-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered platform for open-source contributors to discover high-impact GitHub issues",
+  "scripts": {
+    "dev": "docker compose up --build",
+    "dev:local": "npm run dev --prefix apps/web",
+    "build": "npm run build --prefix apps/web",
+    "lint": "npm run lint --prefix apps/web && (cd apps/api && python3 -m ruff check .)",
+    "format": "npx prettier --write \"**/*.{ts,tsx,json,md,yml,yaml}\" && (cd apps/api && python3 -m ruff format .)",
+    "format:check": "npx prettier --check \"**/*.{ts,tsx,json,md,yml,yaml}\" && (cd apps/api && python3 -m ruff format --check .)",
+    "typecheck": "npm run typecheck --prefix apps/web",
+    "test:api": "cd apps/api && python3 -m pytest",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "prettier": "^3.2.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
