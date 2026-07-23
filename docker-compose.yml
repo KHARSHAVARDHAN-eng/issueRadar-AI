@@ -3,13 +3,14 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: issueradar_postgres
+    container_name: issueradar-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-issueradar}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-issueradar_secret_password}
       POSTGRES_DB: ${POSTGRES_DB:-issueradar_db}
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,13 +19,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: issueradar_redis
+    container_name: issueradar-redis
+    restart: unless-stopped
     ports:
-      - '${REDIS_PORT:-6379}:6379'
+      - '6379:6379'
     volumes:
       - redis_data:/data
     healthcheck:
@@ -32,48 +33,69 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
 
   api:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
-    container_name: issueradar_api
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - API_PORT=${API_PORT:-8000}
-      - API_HOST=${API_HOST:-0.0.0.0}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
-      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://issueradar:issueradar_secret_password@postgres:5432/issueradar_db}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+    container_name: issueradar-api
+    restart: unless-stopped
     ports:
-      - '${API_PORT:-8000}:8000'
+      - '8000:8000'
+    environment:
+      - ENVIRONMENT=production
+      - PORT=8000
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-issueradar}:${POSTGRES_PASSWORD:-issueradar_secret_password}@postgres:5432/${POSTGRES_DB:-issueradar_db}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-mock_github_client_id}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-mock_github_client_secret}
+      - GITHUB_REDIRECT_URI=${GITHUB_REDIRECT_URI:-http://localhost:8000/api/v1/auth/callback}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev_secret_jwt_key_issueradar_ai_at_least_32_chars_long}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-xK9dJ_L2mN4pQ6rS8tV0wX2yZ4a6b8c0d2e4f6g8h0i=}
+      - AI_PROVIDER=${AI_PROVIDER:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://issueradar-ai.vercel.app,http://localhost:3000}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'python -c "import urllib.request; urllib.request.urlopen(''http://localhost:8000/health'')"',
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
 
-  web:
+  celery_worker:
     build:
-      context: ./apps/web
+      context: ./apps/api
       dockerfile: Dockerfile
-    container_name: issueradar_web
-    ports:
-      - '3000:80'
+    container_name: issueradar-worker
+    restart: unless-stopped
+    command: celery -A app.core.celery_app.celery_app worker --loglevel=info
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-issueradar}:${POSTGRES_PASSWORD:-issueradar_secret_password}@postgres:5432/${POSTGRES_DB:-issueradar_db}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-xK9dJ_L2mN4pQ6rS8tV0wX2yZ4a6b8c0d2e4f6g8h0i=}
+      - AI_PROVIDER=${AI_PROVIDER:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
       - api
+      - redis
+
+  celery_beat:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: issueradar-beat
     restart: unless-stopped
+    command: celery -A app.core.celery_app.celery_app beat --loglevel=info
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
 
 volumes:
   postgres_data:

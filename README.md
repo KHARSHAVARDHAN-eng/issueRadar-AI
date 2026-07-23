@@ -4,110 +4,115 @@
 
 ---
 
-## 🌟 Architecture & System Design
+## 🌟 Architecture & Local Hybrid Deployment
 
-IssueRadar AI is built as a **production-ready monorepo** with a clean layered architecture (Router → Service → Repository → Database) ensuring separation of concerns, high throughput, and observability.
+IssueRadar AI is deployed using a **Hybrid Production Architecture**:
+
+- **Frontend**: Deployed on **Vercel** (`https://issueradar-ai.vercel.app`)
+- **Backend Stack**: Hosted locally on macOS (Apple Silicon M1/M2/M3) via **Docker Compose** (`api`, `postgres`, `redis`, `celery_worker`, `celery_beat`)
+- **Public Tunnel**: Exposed to Vercel via **Cloudflare Tunnel** (`https://*.trycloudflare.com` or custom domain)
 
 ```mermaid
 graph TD
-    Client[Web Client<br/>React 18 + Vite + TS] -->|1. Edge Proxy| Nginx[Nginx Reverse Proxy]
-    Nginx -->|2. Frontend Assets| Static[Nginx Web Server]
-    Nginx -->|3. REST API / Auth| API[FastAPI Backend]
-    API -->|4. Auth & Metadata| DB[(PostgreSQL 16)]
-    API -->|5. Caching & Queue| Redis[(Redis 7)]
-    API -->|6. Enqueue Background Task| Worker[Celery Worker]
-    Worker -->|7. Multi-LLM Calls| AI[AI Provider Engine<br/>Gemini / OpenAI / Mock]
+    Client[Vercel Web Client<br/>https://issueradar-ai.vercel.app] -->|HTTPS REST API| Cloudflare[Cloudflare Tunnel]
+    Cloudflare -->|Local Tunnel| LocalHost[macOS Local Host<br/>localhost:8000]
 
-    subgraph "Docker Compose Orchestration Stack"
-        Nginx
-        Static
-        API
-        DB
-        Redis
-        Worker
+    subgraph "Local Docker Compose Stack"
+        LocalHost --> API[FastAPI Container]
+        API --> DB[(PostgreSQL 16 Volume)]
+        API --> Redis[(Redis 7 Volume)]
+        API --> Worker[Celery Worker Container]
+        Worker --> AI[Gemini / OpenAI API]
     end
 ```
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ Helper Execution Scripts
 
-| Layer             | Technology                      | Description                                                       |
-| :---------------- | :------------------------------ | :---------------------------------------------------------------- |
-| **Frontend**      | React 18 + Vite + TypeScript    | Modern SPA, AuthContext, Glassmorphic UI, Error Boundaries        |
-| **Backend**       | FastAPI (Python 3.11)           | Async SQLAlchemy 2, Pydantic v2, PyJWT, Fernet Token Encryption   |
-| **AI Engine**     | Gemini & OpenAI & Mock          | Pluggable provider system with structured JSON schema outputs     |
-| **Worker Queue**  | Celery + Redis 7                | Non-blocking background worker task pipeline chaining             |
-| **Database**      | PostgreSQL 16                   | Relational store with UUID primary keys & Alembic migrations      |
-| **Edge Proxy**    | Nginx 1.25                      | Security headers, WebSocket upgrades, Gzip compression            |
-| **Observability** | Prometheus & Structured JSON    | `/metrics`, `/ready`, `/live`, `/health` probes & JSON log format |
-| **DevOps & CI**   | Docker Compose + GitHub Actions | Multi-stage Docker builds & automated GitHub Actions CI           |
-
----
-
-## 🔐 GitHub Authentication & Security Specs
-
-1. **Fernet Token Encryption**: GitHub OAuth access tokens are encrypted with **Fernet (AES-128-CBC)** before database persistence.
-2. **HttpOnly Cookie Sessions**: Authentication tokens are stored exclusively in `HttpOnly`, `SameSite=Lax` cookies (`access_token` & `refresh_token`).
-3. **JWT Refresh Token Rotation**: Automatic token rotation via `POST /api/v1/auth/refresh`.
-4. **Rate Limiting**: Sliding-window rate limiting middleware enforcing request limits with `X-RateLimit-*` headers.
-
----
-
-## 🚀 Quick Start Guide
-
-### Prerequisites
-
-- [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/)
-- [Node.js](https://nodejs.org/) (v18+)
-- [Python](https://www.python.org/) (v3.11+)
-
-### 1. Clone & Environment Setup
+Use the pre-configured executable scripts in `scripts/` to manage the local stack:
 
 ```bash
-git clone https://github.com/your-org/issueradar-ai.git
-cd issueradar-ai
-cp .env.example .env
-```
+# Start all containers in background and check health
+./scripts/start.sh
 
-### 2. Run via Docker Compose (Dev Stack)
+# Inspect running container status and /health probe
+./scripts/status.sh
 
-```bash
-make dev-docker
-# OR
-docker compose -f docker-compose.dev.yml up --build
-```
-
-Access the applications:
-
-- **Web App**: `http://localhost:3000`
-- **FastAPI Documentation**: `http://localhost:8000/docs`
-- **Health Check Probe**: `http://localhost:8000/health`
-- **Prometheus Metrics**: `http://localhost:8000/metrics`
-
----
-
-## 🏭 Production Deployment
-
-For production environments, copy the production template and launch the production compose stack:
-
-```bash
-cp .env.production.example .env
-docker compose -f docker-compose.prod.yml up --build -d
+# Stop all containers cleanly
+./scripts/stop.sh
 ```
 
 ---
 
-## 🧪 Verification & Release Targets
+## 🌐 Cloudflare Tunnel Setup Guide
 
-Use the monorepo `Makefile` for developer workflows:
+To connect your Vercel production frontend to your local M1 Mac backend:
+
+### 1. Install Cloudflared
+
+On macOS:
+
+```bash
+brew install cloudflared
+```
+
+### 2. Launch an Instant HTTPS Tunnel
+
+Start the local stack and expose port `8000`:
+
+```bash
+./scripts/start.sh
+cloudflared tunnel --url http://localhost:8000
+```
+
+`cloudflared` will generate a public HTTPS URL (e.g. `https://random-subdomain.trycloudflare.com`).
+
+### 3. Update Vercel Environment Variables
+
+- Set `VITE_API_BASE_URL` on Vercel to your Cloudflare URL:
+  `VITE_API_BASE_URL="https://random-subdomain.trycloudflare.com"`
+- Trigger a Vercel redeploy.
+
+### 4. (Optional) Create a Named Persistent Cloudflare Tunnel
+
+```bash
+# Authenticate with Cloudflare
+cloudflared tunnel login
+
+# Create tunnel
+cloudflared tunnel create issueradar-backend
+
+# Configure routing in ~/.cloudflared/config.yml:
+# tunnel: <Tunnel-UUID>
+# credentials-file: ~/.cloudflared/<Tunnel-UUID>.json
+# ingress:
+#   - hostname: api.issueradar.ai
+#     service: http://localhost:8000
+#   - service: http_status:404
+
+# Run named tunnel
+cloudflared tunnel run issueradar-backend
+```
+
+---
+
+## 🔐 GitHub OAuth Configuration for Hybrid Stack
+
+When running behind Cloudflare Tunnel, register your OAuth Callback in **GitHub Developer Settings**:
+
+- **Homepage URL**: `https://issueradar-ai.vercel.app`
+- **Authorization Callback URL**: `https://<your-cloudflare-tunnel>.trycloudflare.com/api/v1/auth/callback`
+
+---
+
+## 🧪 Monorepo Verification & Quality Targets
 
 ```bash
 make lint       # Run ESLint & Ruff code quality checks
 make format     # Format codebase with Prettier & Ruff
 make test       # Run full Pytest suite
 make build      # Compile TypeScript and Vite production bundle
-make release    # Execute full release verification pipeline
 ```
 
 ---
