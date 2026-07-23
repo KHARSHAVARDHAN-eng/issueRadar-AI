@@ -134,15 +134,9 @@ export const AppContent: React.FC = () => {
 };
 
 export const App: React.FC = () => {
-  const isLoginPage = window.location.pathname === '/login';
-
-  if (isLoginPage) {
-    return <LoginPage />;
-  }
-
   return (
     <AuthProvider>
-      <ProtectedRoute>
+      <ProtectedRoute fallback={<LoginPage />}>
         <AppContent />
       </ProtectedRoute>
     </AuthProvider>

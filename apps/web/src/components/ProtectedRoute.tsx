@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { LoginPage } from '../pages/LoginPage';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -44,7 +45,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, fallba
   }
 
   if (!isAuthenticated) {
-    return <>{fallback}</>;
+    return <>{fallback || <LoginPage />}</>;
   }
 
   return <>{children}</>;
