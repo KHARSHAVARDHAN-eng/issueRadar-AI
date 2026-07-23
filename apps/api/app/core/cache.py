@@ -16,20 +16,23 @@ class CacheService:
     async def get_json(self, key: str) -> Any | None:
         try:
             redis = await get_redis()
-            data = await redis.get(key)
-            if data:
-                return json.loads(data)
+            if redis:
+                data = await redis.get(key)
+                if data:
+                    return json.loads(data)
         except Exception as e:
             logger.debug(f"Redis get error for key '{key}': {e}. Checking memory fallback.")
-            return self._memory_cache.get(key)
 
         return self._memory_cache.get(key)
 
     async def set_json(self, key: str, value: Any, ttl_seconds: int = 300) -> None:
         try:
             redis = await get_redis()
-            serialized = json.dumps(value)
-            await redis.setex(key, ttl_seconds, serialized)
+            if redis:
+                serialized = json.dumps(value)
+                await redis.setex(key, ttl_seconds, serialized)
+            else:
+                self._memory_cache[key] = value
         except Exception as e:
             logger.debug(f"Redis setex error for key '{key}': {e}. Using memory fallback.")
             self._memory_cache[key] = value
@@ -37,7 +40,8 @@ class CacheService:
     async def delete(self, key: str) -> None:
         try:
             redis = await get_redis()
-            await redis.delete(key)
+            if redis:
+                await redis.delete(key)
         except Exception as e:
             logger.debug(f"Redis delete error for key '{key}': {e}.")
 

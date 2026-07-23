@@ -48,27 +48,30 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
 
         try:
             redis = await get_redis()
-            current_count = await redis.incr(key)
-            if current_count == 1:
-                await redis.expire(key, self.window_seconds)
-            ttl = await redis.ttl(key)
-            reset_time = int(current_time + (ttl if ttl > 0 else self.window_seconds))
-            remaining = max(0, limit - current_count)
+            if redis is not None:
+                current_count = await redis.incr(key)
+                if current_count == 1:
+                    await redis.expire(key, self.window_seconds)
+                ttl = await redis.ttl(key)
+                reset_time = int(current_time + (ttl if ttl > 0 else self.window_seconds))
+                remaining = max(0, limit - current_count)
 
-            if current_count > limit:
-                return JSONResponse(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    content={
-                        "detail": "Rate limit exceeded. Please try again later.",
-                        "retry_after": ttl,
-                    },
-                    headers={
-                        "X-RateLimit-Limit": str(limit),
-                        "X-RateLimit-Remaining": "0",
-                        "X-RateLimit-Reset": str(reset_time),
-                        "Retry-After": str(ttl),
-                    },
-                )
+                if current_count > limit:
+                    return JSONResponse(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        content={
+                            "detail": "Rate limit exceeded. Please try again later.",
+                            "retry_after": ttl,
+                        },
+                        headers={
+                            "X-RateLimit-Limit": str(limit),
+                            "X-RateLimit-Remaining": "0",
+                            "X-RateLimit-Reset": str(reset_time),
+                            "Retry-After": str(ttl),
+                        },
+                    )
+            else:
+                raise ValueError("Redis client unavailable")
         except Exception:
             # Memory fallback calculation
             history = self._memory_counter.get(key, [])

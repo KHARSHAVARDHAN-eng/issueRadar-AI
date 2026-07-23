@@ -24,8 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /install /usr/local
 COPY . /app
 
-# Create non-root user for security
-RUN useradd -m -u 10001 appuser && chown -R appuser:appuser /app
+# Create non-root user and set permissions
+RUN useradd -m -u 10001 appuser && chown -R appuser:appuser /app && chmod +x /app/entrypoint.sh
 USER appuser
 
 ENV PYTHONUNBUFFERED=1 \
@@ -35,6 +35,6 @@ ENV PYTHONUNBUFFERED=1 \
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8000/live || exit 1
+  CMD curl -f http://localhost:${PORT:-8000}/live || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]

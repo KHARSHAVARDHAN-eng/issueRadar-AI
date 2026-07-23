@@ -1,0 +1,36 @@
+# Koyeb Application Deployment Specification for IssueRadar AI Backend
+
+name: issueradar-ai-backend
+type: web
+routes:
+  - path: /
+    port: 8000
+ports:
+  - port: 8000
+    protocol: http
+env:
+  - key: ENVIRONMENT
+    value: production
+  - key: PORT
+    value: "8000"
+  - key: DATABASE_URL
+    value: ${DATABASE_URL}
+  - key: GITHUB_CLIENT_ID
+    value: ${GITHUB_CLIENT_ID}
+  - key: GITHUB_CLIENT_SECRET
+    value: ${GITHUB_CLIENT_SECRET}
+  - key: GITHUB_REDIRECT_URI
+    value: ${GITHUB_REDIRECT_URI}
+  - key: JWT_SECRET_KEY
+    value: ${JWT_SECRET_KEY}
+  - key: ENCRYPTION_KEY
+    value: ${ENCRYPTION_KEY}
+  - key: AI_PROVIDER
+    value: gemini
+  - key: GEMINI_API_KEY
+    value: ${GEMINI_API_KEY}
+  - key: REDIS_URL
+    value: ${REDIS_URL:-""}
+build:
+  type: docker
+  dockerfile: apps/api/Dockerfile
