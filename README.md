@@ -4,7 +4,7 @@
 
 ---
 
-## 🌟 Architecture & Local Hybrid Deployment
+## Architecture & Local Hybrid Deployment
 
 IssueRadar AI is deployed using a **Hybrid Production Architecture**:
 
